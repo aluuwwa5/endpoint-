@@ -1,0 +1,20 @@
+services:
+  voice-bot:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override Windows paths from .env with container-local paths
+      HF_HOME: /app/.cache/huggingface
+      TORCH_HOME: /app/.cache/torch
+    volumes:
+      # Persist downloaded Whisper + HuggingFace models across restarts
+      - model-cache:/app/.cache
+      # Persist ChromaDB vector store
+      - chroma-data:/app/chroma_data
+
+volumes:
+  model-cache:
+  chroma-data:
