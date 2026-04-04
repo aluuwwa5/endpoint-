@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KBTU Voice Bot</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 520px;
+            width: 100%;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .logo {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+
+        .settings-row {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .settings-row .label {
+            color: #64748b;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            width: 100%;
+            margin-bottom: 0.25rem;
+        }
+
+        .option-btn {
+            padding: 0.45rem 1rem;
+            border-radius: 20px;
+            border: 2px solid #334155;
+            background: transparent;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+
+        .option-btn.active {
+            border-color: #8b5cf6;
+            color: #e2e8f0;
+            background: rgba(139, 92, 246, 0.15);
+        }
+
+        .option-btn:hover { border-color: #8b5cf6; }
+
+        .record-btn {
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: white;
+            font-size: 2.8rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 30px rgba(59, 130, 246, 0.3);
+            margin: 1.5rem 0;
+        }
+
+        .record-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 40px rgba(59, 130, 246, 0.5);
+        }
+
+        .record-btn.recording {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            box-shadow: 0 4px 30px rgba(239, 68, 68, 0.4);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .record-btn.processing {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            box-shadow: 0 4px 30px rgba(245, 158, 11, 0.4);
+            cursor: wait;
+            animation: none;
+        }
+
+        .record-btn:disabled { opacity: 0.6; cursor: wait; }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+        }
+
+        .status {
+            font-size: 0.95rem;
+            color: #94a3b8;
+            margin-bottom: 1.5rem;
+            min-height: 1.5em;
+        }
+
+        .status.recording { color: #f87171; }
+        .status.processing { color: #fbbf24; }
+        .status.playing { color: #4ade80; }
+        .status.error { color: #f87171; }
+
+        .timer {
+            font-size: 0.8rem;
+            color: #f87171;
+            margin-top: 0.5rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .visualizer-wrap {
+            width: 100%;
+            height: 80px;
+            margin: 0.5rem 0;
+            display: none;
+        }
+
+        .visualizer-wrap.active {
+            display: block;
+        }
+
+        #waveCanvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+        }
+
+        .chat-log {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 1rem;
+            max-height: 350px;
+            overflow-y: auto;
+            text-align: left;
+            margin-top: 1.5rem;
+        }
+
+        .chat-msg {
+            margin-bottom: 0.75rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .chat-msg.user {
+            background: rgba(59, 130, 246, 0.15);
+            border-left: 3px solid #3b82f6;
+        }
+
+        .chat-msg.bot {
+            background: rgba(139, 92, 246, 0.15);
+            border-left: 3px solid #8b5cf6;
+        }
+
+        .chat-msg .label {
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .chat-msg.user .label { color: #60a5fa; }
+        .chat-msg.bot .label { color: #a78bfa; }
+
+        .lang-badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            background: rgba(148, 163, 184, 0.2);
+            color: #94a3b8;
+            margin-left: 0.5rem;
+        }
+
+        .timings {
+            font-size: 0.7rem;
+            color: #64748b;
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">KBTU Voice Bot</div>
+        <div class="subtitle">Psychological Support</div>
+
+        <div class="settings-row">
+            <div class="label">Voice</div>
+            <button class="option-btn active" data-gender="female" onclick="selectVoice('female')">Female</button>
+            <button class="option-btn" data-gender="male" onclick="selectVoice('male')">Male</button>
+        </div>
+
+        <button class="record-btn" id="recordBtn" onclick="toggleRecording()">🎤</button>
+        <div class="visualizer-wrap" id="visualizerWrap">
+            <canvas id="waveCanvas"></canvas>
+        </div>
+        <div class="timer" id="timer" style="display:none;">0:00</div>
+
+        <div class="status" id="status">Press the microphone and speak</div>
+
+        <div class="chat-log" id="chatLog" style="display: none;"></div>
+    </div>
+
+    <script>
+        const SAMPLE_RATE = 16000;
+        const SESSION_ID = crypto.randomUUID();  // one session per page load
+        let gender = 'female';
+
+        // Read JWT token: first from URL ?token=..., then from localStorage
+        const _urlToken = new URLSearchParams(window.location.search).get('token');
+        const AUTH_TOKEN = _urlToken || localStorage.getItem('access_token') || '';
+
+        let mediaStream = null;
+        let audioContext = null;
+        let processor = null;
+        let analyser = null;
+        let animFrameId = null;
+        let isRecording = false;
+        let isProcessing = false;
+        let audioChunks = [];
+        let timerInterval = null;
+        let recordStart = 0;
+
+        const recordBtn = document.getElementById('recordBtn');
+        const statusEl = document.getElementById('status');
+        const chatLog = document.getElementById('chatLog');
+        const timerEl = document.getElementById('timer');
+        const visualizerWrap = document.getElementById('visualizerWrap');
+        const waveCanvas = document.getElementById('waveCanvas');
+        const canvasCtx = waveCanvas.getContext('2d');
+
+        function startVisualizer(source) {
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+
+            visualizerWrap.classList.add('active');
+            waveCanvas.width = waveCanvas.offsetWidth * window.devicePixelRatio;
+            waveCanvas.height = waveCanvas.offsetHeight * window.devicePixelRatio;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            const W = waveCanvas.width;
+            const H = waveCanvas.height;
+            const barCount = 64;
+            const barWidth = W / barCount - 2;
+            const step = Math.floor(bufferLength / barCount);
+
+            function draw() {
+                animFrameId = requestAnimationFrame(draw);
+                analyser.getByteFrequencyData(dataArray);
+
+                canvasCtx.clearRect(0, 0, W, H);
+
+                for (let i = 0; i < barCount; i++) {
+                    const val = dataArray[i * step] / 255;
+                    const barH = Math.max(2, val * H * 0.9);
+                    const x = i * (barWidth + 2);
+                    const y = (H - barH) / 2;
+
+                    const gradient = canvasCtx.createLinearGradient(x, y, x, y + barH);
+                    gradient.addColorStop(0, `rgba(139, 92, 246, ${0.4 + val * 0.6})`);
+                    gradient.addColorStop(1, `rgba(59, 130, 246, ${0.4 + val * 0.6})`);
+                    canvasCtx.fillStyle = gradient;
+
+                    canvasCtx.beginPath();
+                    canvasCtx.roundRect(x, y, barWidth, barH, 2);
+                    canvasCtx.fill();
+                }
+            }
+            draw();
+        }
+
+        function stopVisualizer() {
+            if (animFrameId) {
+                cancelAnimationFrame(animFrameId);
+                animFrameId = null;
+            }
+            visualizerWrap.classList.remove('active');
+            analyser = null;
+        }
+
+        function selectVoice(g) {
+            gender = g;
+            document.querySelectorAll('[data-gender]').forEach(el => {
+                el.classList.toggle('active', el.dataset.gender === g);
+            });
+        }
+
+        function setStatus(text, cls = '') {
+            statusEl.textContent = text;
+            statusEl.className = 'status ' + cls;
+        }
+
+        function startTimer() {
+            recordStart = Date.now();
+            timerEl.style.display = 'block';
+            timerEl.textContent = '0:00';
+            timerInterval = setInterval(() => {
+                const sec = Math.floor((Date.now() - recordStart) / 1000);
+                timerEl.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+            }, 200);
+        }
+
+        function stopTimer() {
+            clearInterval(timerInterval);
+            timerEl.style.display = 'none';
+        }
+
+        function addChatMessage(role, text, lang, timings) {
+            chatLog.style.display = 'block';
+            const div = document.createElement('div');
+            div.className = `chat-msg ${role}`;
+
+            const langNames = { kk: 'Kazakh', ru: 'Russian', en: 'English' };
+            const langBadge = lang ? `<span class="lang-badge">${langNames[lang] || lang}</span>` : '';
+            const timingsHtml = timings
+                ? `<div class="timings">STT: ${timings.stt_ms || '—'}ms | RAG: ${timings.rag_ms || '—'}ms | LLM: ${timings.llm_ms || '—'}ms | TTS: ${timings.tts_ms || '—'}ms | Total: ${timings.total_ms || '—'}ms</div>`
+                : '';
+
+            div.innerHTML = `
+                <div class="label">${role === 'user' ? 'You' : 'Bot'}${langBadge}</div>
+                <div>${text}</div>
+                ${role === 'bot' ? timingsHtml : ''}
+            `;
+            chatLog.appendChild(div);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        async function toggleRecording() {
+            if (isProcessing) return;
+            if (isRecording) {
+                await stopAndSend();
+            } else {
+                await startRecording();
+            }
+        }
+
+        async function startRecording() {
+            try {
+                setStatus('Connecting microphone...', '');
+
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: SAMPLE_RATE,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                    }
+                });
+
+                audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+                const source = audioContext.createMediaStreamSource(mediaStream);
+
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+                audioChunks = [];
+
+                processor.onaudioprocess = (e) => {
+                    if (!isRecording) return;
+                    const float32 = e.inputBuffer.getChannelData(0);
+                    const int16 = new Int16Array(float32.length);
+                    for (let i = 0; i < float32.length; i++) {
+                        int16[i] = Math.max(-32768, Math.min(32767, Math.round(float32[i] * 32768)));
+                    }
+                    audioChunks.push(new Int16Array(int16));
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                startVisualizer(source);
+
+                isRecording = true;
+                recordBtn.classList.add('recording');
+                recordBtn.textContent = '⏹';
+                setStatus('Speak... Press stop when done', 'recording');
+                startTimer();
+
+            } catch (err) {
+                console.error('Microphone error:', err);
+                setStatus('Error: ' + err.message, 'error');
+            }
+        }
+
+        async function stopAndSend() {
+            isRecording = false;
+            stopTimer();
+            stopVisualizer();
+
+            if (processor) { processor.disconnect(); processor = null; }
+            if (audioContext) { audioContext.close(); audioContext = null; }
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+
+            if (audioChunks.length === 0) {
+                setStatus('No audio recorded', 'error');
+                recordBtn.classList.remove('recording');
+                recordBtn.textContent = '🎤';
+                return;
+            }
+
+            const totalLength = audioChunks.reduce((sum, c) => sum + c.length, 0);
+            const merged = new Int16Array(totalLength);
+            let offset = 0;
+            for (const chunk of audioChunks) {
+                merged.set(chunk, offset);
+                offset += chunk.length;
+            }
+            audioChunks = [];
+
+            const durationSec = (totalLength / SAMPLE_RATE).toFixed(1);
+
+            isProcessing = true;
+            recordBtn.classList.remove('recording');
+            recordBtn.classList.add('processing');
+            recordBtn.textContent = '⏳';
+            recordBtn.disabled = true;
+            setStatus(`Processing ${durationSec}s of audio...`, 'processing');
+
+            try {
+                const ws = new WebSocket(`ws://${window.location.host}/ws/voice`);
+                ws.binaryType = 'arraybuffer';
+
+                ws.onopen = () => {
+                    ws.send(JSON.stringify({ type: 'config', gender: gender, session_id: SESSION_ID, token: AUTH_TOKEN }));
+                    ws.send(merged.buffer);
+                    ws.send(JSON.stringify({ type: 'end' }));
+                };
+
+                ws.onmessage = (event) => {
+                    if (typeof event.data === 'string') {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'transcription') {
+                            addChatMessage('user', msg.text_in, msg.language);
+                            addChatMessage('bot', msg.text_out, msg.language, msg.timings);
+                            setStatus('Playing response...', 'playing');
+                        }
+                    } else {
+                        playAudio(event.data).then(() => {
+                            setStatus('Press the microphone and speak', '');
+                        });
+                    }
+                };
+
+                ws.onerror = () => {
+                    setStatus('Connection error', 'error');
+                    resetBtn();
+                };
+
+                ws.onclose = () => {
+                    resetBtn();
+                };
+
+            } catch (err) {
+                console.error('Send error:', err);
+                setStatus('Error: ' + err.message, 'error');
+                resetBtn();
+            }
+        }
+
+        function resetBtn() {
+            isProcessing = false;
+            recordBtn.classList.remove('recording', 'processing');
+            recordBtn.textContent = '🎤';
+            recordBtn.disabled = false;
+        }
+
+        async function playAudio(arrayBuffer) {
+            try {
+                const int16 = new Int16Array(arrayBuffer);
+                const float32 = new Float32Array(int16.length);
+                for (let i = 0; i < int16.length; i++) {
+                    float32[i] = int16[i] / 32768;
+                }
+
+                const playCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+                const buffer = playCtx.createBuffer(1, float32.length, SAMPLE_RATE);
+                buffer.getChannelData(0).set(float32);
+
+                const source = playCtx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(playCtx.destination);
+                source.start();
+
+                return new Promise(resolve => {
+                    source.onended = () => {
+                        playCtx.close();
+                        resolve();
+                    };
+                });
+            } catch (err) {
+                console.error('Playback error:', err);
+            }
+        }
+    </script>
+</body>
+</html>

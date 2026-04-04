@@ -1,0 +1,19 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets — never bake into image, pass via env at runtime
+.env
+
+# HuggingFace model cache — mount as a volume instead
+.cache/
+
+# ChromaDB persistent storage — mount as a volume instead
+chroma_data/
+
+# Git
+.git/
+.gitignore

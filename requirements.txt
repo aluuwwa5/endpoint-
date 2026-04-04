@@ -1,0 +1,29 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# STT - Whisper
+faster-whisper==1.1.0
+
+# LLM - Google Gemini
+google-genai==1.14.0
+
+# TTS - Azure Speech
+azure-cognitiveservices-speech==1.42.0
+
+# RAG - Vector store & embeddings
+chromadb==0.6.3
+sentence-transformers==3.4.1
+
+# LiveKit Agents
+livekit>=1.0.6
+livekit-agents>=1.0.16
+livekit-plugins-silero>=1.0.16
+
+# HTTP client (for teammate's booking API)
+httpx==0.27.2
+
+# Utils
+python-dotenv==1.0.1
+pydantic-settings==2.7.1
+numpy==1.26.4

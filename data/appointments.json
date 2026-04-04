@@ -1,0 +1,57 @@
+[
+  {
+    "id": "34b0e72f",
+    "student_name": "Айдана",
+    "faculty": "FIT",
+    "year": "2",
+    "concern": "стресс и бессонница перед экзаменами",
+    "preferred_time": "будни утро",
+    "language": "ru",
+    "status": "pending",
+    "created_at": "2026-02-19T20:15:29.277153"
+  },
+  {
+    "id": "262084e3",
+    "first_name": "Мажит",
+    "last_name": "Арнур",
+    "specialty": "информационные системы",
+    "problem_summary": "стресс пен шашу, сабақтардың қиындығы",
+    "appointment_date": "бейсенбі күні сағат беске",
+    "language": "kk",
+    "status": "pending",
+    "created_at": "2026-02-22T13:21:21.576576"
+  },
+  {
+    "id": "ed346862",
+    "first_name": "Мажит",
+    "last_name": "Арнур",
+    "specialty": "Информационная система 3 курс",
+    "problem_summary": "Тіл кедері, оқытушылармен ашықтан сөйлесе алмау",
+    "appointment_date": "сәрсенбі кешкі алты",
+    "language": "kk",
+    "status": "pending",
+    "created_at": "2026-02-22T13:55:40.810524"
+  },
+  {
+    "id": "19a8dd38",
+    "first_name": "Аллуа",
+    "last_name": null,
+    "specialty": "НГД 4 курс",
+    "problem_summary": "Тревога, проблемы с концентрацией и бессонница, снижение оценок",
+    "appointment_date": "завтра 17:00",
+    "language": "ru",
+    "status": "pending",
+    "created_at": "2026-02-23T13:06:16.071248"
+  },
+  {
+    "id": "18ec79c2",
+    "first_name": "Айдана",
+    "last_name": "",
+    "specialty": "Морское дело, 3 курс",
+    "problem_summary": "Тревожность и бессонница, проблемы с дипломной работой",
+    "appointment_date": "бейсенбі 15:00",
+    "language": "kk",
+    "status": "pending",
+    "created_at": "2026-02-28T12:21:59.648760"
+  }
+]
