@@ -15,11 +15,6 @@ azure-cognitiveservices-speech==1.42.0
 chromadb==0.6.3
 sentence-transformers==3.4.1
 
-# LiveKit Agents
-livekit>=1.0.6
-livekit-agents>=1.0.16
-livekit-plugins-silero>=1.0.16
-
 # HTTP client (for teammate's booking API)
 httpx==0.28.1
 
