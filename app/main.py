@@ -10,12 +10,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 from fastapi import FastAPI, Header, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.config import settings
 from app.appointments import get_appointments
+from app.chat_history import save_message, get_history, clear_history
+
+
+def user_id_from_token(token: str) -> str:
+    """Extract user UUID from JWT payload (no signature verification needed)."""
+    try:
+        payload_b64 = token.split('.')[1]
+        payload_b64 += '=' * (4 - len(payload_b64) % 4)
+        payload = json.loads(base64.b64decode(payload_b64))
+        return str(payload.get('sub') or payload.get('email') or token[:16])
+    except Exception:
+        return token[:16]
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,8 +68,8 @@ def _build_ws_response(result: dict) -> dict:
         "action": result.get("action", "none"),
         "timings": result["timings"],
     }
-    if result.get("appointment"):
-        resp["appointment"] = result["appointment"]
+    if result.get("action_result"):
+        resp["action_result"] = result["action_result"]
     return resp
 
 
@@ -67,6 +79,11 @@ def _build_ws_response(result: dict) -> dict:
 @app.get("/")
 async def index():
     return FileResponse(BASE_DIR / "static" / "index.html")
+
+
+@app.get("/chat")
+async def chat_page():
+    return FileResponse(BASE_DIR / "static" / "chat.html")
 
 
 @app.get("/system-design")
@@ -87,6 +104,66 @@ async def health():
             "azure_speech": bool(settings.azure_speech_key),
         },
     }
+
+
+# ── Profile proxy ────────────────────────────────────────────
+
+
+@app.get("/api/me")
+async def get_me(authorization: str = Header(default="")):
+    """Return current user's profile (proxied from KBTU users API)."""
+    from app.user_client import get_profile
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        return {"full_name": None, "email": None}
+    try:
+        data = await get_profile(token)
+        return {
+            "full_name": data.get("full_name"),
+            "email": data.get("email"),
+            "id": data.get("id"),
+        }
+    except Exception:
+        return {"full_name": None, "email": None, "id": None}
+
+
+# ── Chat history ──────────────────────────────────────────────
+
+
+@app.get("/api/history")
+async def chat_history(authorization: str = Header(default=""), limit: int = 100):
+    """Return saved chat messages for the current user."""
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        return {"messages": []}
+    user_id = user_id_from_token(token)
+    return {"messages": await get_history(user_id, limit=limit)}
+
+
+@app.delete("/api/history")
+async def delete_history(authorization: str = Header(default="")):
+    """Clear chat history for the current user."""
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        return {"ok": False}
+    user_id = user_id_from_token(token)
+    await clear_history(user_id)
+    return {"ok": True}
+
+
+# ── Session priming ──────────────────────────────────────────
+
+
+class PrimeRequest(BaseModel):
+    session_id: str
+    greeting: str
+
+
+@app.post("/api/prime-session")
+async def prime_session(req: PrimeRequest):
+    """Inject initial greeting into LLM session so it won't repeat it."""
+    get_pipeline().prime_session(req.session_id, req.greeting)
+    return {"ok": True}
 
 
 # ── Text endpoint (for testing without audio) ────────────────
@@ -112,12 +189,18 @@ async def chat_text(req: TextRequest, authorization: str = Header(default="")):
         token=token,
     )
 
+    # Persist messages
+    if token:
+        user_id = user_id_from_token(token)
+        await save_message(user_id, "user", req.text)
+        await save_message(user_id, "bot", result["text_out"], result.get("action"))
+
     return {
         "text_in": result["text_in"],
         "text_out": result["text_out"],
         "language": result["language"],
         "action": result.get("action", "none"),
-        "appointment": result.get("appointment"),
+        "action_result": result.get("action_result"),
         "audio_out_base64": base64.b64encode(result["audio_out"]).decode()
         if result["audio_out"]
         else None,

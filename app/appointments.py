@@ -74,8 +74,22 @@ async def create_appointment(
     if token:
         try:
             from app.booking_client import book_appointment
-            preferred_date = student_data.get("appointment_date") or student_data.get("preferred_time")
-            api_result = await book_appointment(token=token, preferred_date=preferred_date)
+            slot_id = student_data.get("slot_id")
+            if not slot_id:
+                raise ValueError("slot_id missing in student_data — cannot book")
+            api_result = await book_appointment(
+                token=token,
+                slot_id=slot_id,
+                booking_type=student_data.get("booking_type", "online"),
+                phone_number=student_data.get("phone_number", ""),
+                questionnaire={
+                    "main_topic": student_data.get("problem_summary", ""),
+                    "avoid_topics": student_data.get("avoid_topics", ""),
+                    "sleep": student_data.get("sleep", "Okay"),
+                    "appetite": student_data.get("appetite", "Okay"),
+                    "mood": student_data.get("mood_note", ""),
+                },
+            )
             logger.info("Appointment booked via API: slot_id=%s", api_result.get("slot_id"))
         except Exception as exc:
             logger.error("API booking failed, saving locally only: %s", exc)

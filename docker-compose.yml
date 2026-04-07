@@ -7,20 +7,36 @@ services:
     env_file:
       - .env
     environment:
-      # Override Windows paths from .env with container-local paths
       HF_HOME: /app/.cache/huggingface
       TORCH_HOME: /app/.cache/torch
+      DATABASE_URL: postgresql://voicebot:voicebot@db:5432/voicebot
     volumes:
-      # Mount source code directly — no rebuild needed after code changes
       - ./app:/app/app
       - ./static:/app/static
       - ./knowledge_base:/app/knowledge_base
       - ./data:/app/data
-      # Persist downloaded Whisper + HuggingFace models across restarts
       - model-cache:/app/.cache
-      # Persist ChromaDB vector store
       - chroma-data:/app/chroma_data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: voicebot
+      POSTGRES_USER: voicebot
+      POSTGRES_PASSWORD: voicebot
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voicebot -d voicebot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   model-cache:
   chroma-data:
+  pg-data:

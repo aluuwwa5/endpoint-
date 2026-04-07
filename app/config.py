@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     # Whisper
     whisper_model_size: str = "medium"
 
+    # Booking API
+    booking_api_url: str = "https://api.kbtucare.site"
+    psychologist_id: str = ""
+
+    # Database (empty = use SQLite locally; set to postgresql://... in Docker)
+    database_url: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 

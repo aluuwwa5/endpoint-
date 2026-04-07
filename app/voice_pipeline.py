@@ -1,5 +1,6 @@
-"""Voice Pipeline: orchestrates STT → RAG → LLM → TTS flow with action handling."""
+"""Voice Pipeline: orchestrates STT → RAG+context → LLM → TTS → actions."""
 
+import asyncio
 import logging
 import time
 
@@ -18,47 +19,143 @@ class VoicePipeline:
     def __init__(self):
         knowledge_base.initialize()
 
-    async def _run_llm_and_actions(
-        self, text: str, language: str, session_id: str, male: bool = False, token: str = ""
-    ) -> dict:
-        """Run RAG + LLM + handle actions (booking, crisis). Returns timings + parsed result."""
-        timings = {}
+    # ── Context fetching ──────────────────────────────────────
 
-        # RAG retrieval
+    async def _fetch_context(self, text: str, language: str, token: str) -> tuple[str, str, str]:
+        """Fetch RAG context, available slots, and student appointments in parallel.
+
+        Returns (rag_context, slots_context, appointments_context).
+        """
+        from app.booking_client import get_formatted_slots, get_formatted_appointments
+
+        async def _no_context() -> str:
+            return ""
+
+        rag_task = asyncio.to_thread(knowledge_base.retrieve, text)
+        slots_task = get_formatted_slots(token, lang=language) if token else _no_context()
+        appointments_task = get_formatted_appointments(token, lang=language) if token else _no_context()
+
+        rag_ctx, slots_ctx, appts_ctx = await asyncio.gather(
+            rag_task, slots_task, appointments_task
+        )
+
+        if slots_ctx:
+            logger.info("Slots context: %d chars", len(slots_ctx))
+        if appts_ctx:
+            logger.info("Appointments context: %d chars", len(appts_ctx))
+
+        return rag_ctx, slots_ctx, appts_ctx
+
+    # ── Action handlers ───────────────────────────────────────
+
+    async def _handle_action(
+        self, action: str, student_data: dict | None, language: str, token: str
+    ) -> dict | None:
+        """Execute the action returned by the LLM. Returns action result or None."""
+        if not student_data:
+            return None
+
+        try:
+            if action == "book":
+                return await create_appointment(
+                    student_data=student_data,
+                    language=language,
+                    token=token or None,
+                )
+
+            if action == "cancel" and token:
+                from app.booking_client import cancel_appointment
+                return await cancel_appointment(
+                    slot_id=student_data["slot_id"],
+                    token=token,
+                    reason_topic=student_data.get("reason_topic", "Other"),
+                    reason_message=student_data.get("reason_message", ""),
+                )
+
+            if action == "reschedule" and token:
+                from app.booking_client import reschedule_appointment
+                return await reschedule_appointment(
+                    slot_id=student_data["old_slot_id"],
+                    new_slot_id=student_data["new_slot_id"],
+                    token=token,
+                )
+
+            if action == "confirm_appointment" and token:
+                from app.booking_client import confirm_appointment
+                answers = {"reason": student_data.get("reason", "")} if student_data.get("reason") else None
+                return await confirm_appointment(
+                    slot_id=student_data["slot_id"],
+                    token=token,
+                    phone_number=student_data["phone_number"],
+                    answers=answers,
+                )
+
+            if action == "rate" and token:
+                from app.booking_client import rate_session
+                return await rate_session(
+                    slot_id=student_data["slot_id"],
+                    token=token,
+                    rating=int(student_data.get("rating", 5)),
+                    review=student_data.get("review", ""),
+                )
+
+            if action == "log_mood" and token:
+                from app.user_client import log_mood
+                return await log_mood(token=token, mood=student_data["mood"])
+
+            if action == "join_waitlist" and token:
+                from app.booking_client import join_waitlist
+                return await join_waitlist(
+                    token=token,
+                    date=student_data["date"],
+                )
+
+        except KeyError as exc:
+            logger.error("Action '%s' missing field: %s", action, exc)
+        except Exception as exc:
+            logger.error("Action '%s' failed: %s", action, exc)
+
+        return None
+
+    # ── Core pipeline ─────────────────────────────────────────
+
+    async def _run(
+        self, text: str, language: str, session_id: str,
+        male: bool = False, token: str = ""
+    ) -> dict:
+        """RAG + context + LLM + action execution."""
+        timings: dict[str, int] = {}
+
         t0 = time.time()
-        rag_context = knowledge_base.retrieve(text)
+        rag_ctx, slots_ctx, appts_ctx = await self._fetch_context(text, language, token)
         timings["rag_ms"] = int((time.time() - t0) * 1000)
 
-        # LLM — now returns {reply, action, student_data}
         t0 = time.time()
         llm_result = await gemini_llm.generate_response(
             text=text,
             language=language,
             session_id=session_id,
-            rag_context=rag_context,
+            rag_context=rag_ctx,
             male=male,
+            slots_context=slots_ctx,
+            appointments_context=appts_ctx,
         )
         timings["llm_ms"] = int((time.time() - t0) * 1000)
 
-        text_out = llm_result["reply"]
         action = llm_result["action"]
-        appointment = None
+        action_result = await self._handle_action(action, llm_result.get("student_data"), language, token)
 
-        # Handle actions
-        if action == "book" and llm_result.get("student_data"):
-            appointment = await create_appointment(
-                student_data=llm_result["student_data"],
-                language=language,
-                token=token or None,
-            )
-            logger.info("Appointment booked: %s", appointment["id"])
+        if action_result:
+            logger.info("Action '%s' completed: %s", action, str(action_result)[:120])
 
         return {
-            "text_out": text_out,
+            "text_out": llm_result["reply"],
             "action": action,
-            "appointment": appointment,
+            "action_result": action_result,
             "timings": timings,
         }
+
+    # ── Public API ────────────────────────────────────────────
 
     async def process_audio(
         self,
@@ -68,14 +165,9 @@ class VoicePipeline:
         male: bool = False,
         token: str = "",
     ) -> dict:
-        """Process raw audio through the full pipeline.
+        """Process raw audio through the full pipeline."""
+        timings: dict[str, int] = {}
 
-        Returns:
-            dict with: text_in, language, text_out, audio_out, action, appointment, timings
-        """
-        timings = {}
-
-        # Step 1: STT (auto-detect language from speech)
         t0 = time.time()
         stt_result = await whisper_stt.transcribe(audio_data, sample_rate)
         timings["stt_ms"] = int((time.time() - t0) * 1000)
@@ -85,39 +177,33 @@ class VoicePipeline:
 
         if not text_in.strip():
             return {
-                "text_in": "",
-                "language": language,
-                "text_out": "",
-                "audio_out": b"",
-                "action": "none",
-                "appointment": None,
-                "timings": timings,
+                "text_in": "", "language": language, "text_out": "",
+                "audio_out": b"", "action": "none", "action_result": None, "timings": timings,
             }
 
-        # Steps 2-3: RAG + LLM + actions
-        llm_result = await self._run_llm_and_actions(text_in, language, session_id, male=male, token=token)
-        timings.update(llm_result["timings"])
+        result = await self._run(text_in, language, session_id, male=male, token=token)
+        timings.update(result["timings"])
 
-        # Step 4: TTS
         t0 = time.time()
-        audio_out = await azure_tts.synthesize(llm_result["text_out"], language=language, male=male)
+        audio_out = await azure_tts.synthesize(result["text_out"], language=language, male=male)
         timings["tts_ms"] = int((time.time() - t0) * 1000)
         timings["total_ms"] = sum(timings.values())
 
-        logger.info(
-            "Pipeline: lang=%s, action=%s, timings=%s",
-            language, llm_result["action"], timings,
-        )
+        logger.info("Pipeline done: lang=%s action=%s timings=%s", language, result["action"], timings)
 
         return {
             "text_in": text_in,
             "language": language,
-            "text_out": llm_result["text_out"],
+            "text_out": result["text_out"],
             "audio_out": audio_out,
-            "action": llm_result["action"],
-            "appointment": llm_result["appointment"],
+            "action": result["action"],
+            "action_result": result["action_result"],
             "timings": timings,
         }
+
+    def prime_session(self, session_id: str, greeting: str) -> None:
+        """Inject greeting into LLM session so it won't repeat it."""
+        gemini_llm.prime_session(session_id, greeting)
 
     async def process_text(
         self,
@@ -127,24 +213,22 @@ class VoicePipeline:
         token: str = "",
     ) -> dict:
         """Process text input (for testing without audio)."""
-        timings = {}
+        timings: dict[str, int] = {}
 
-        # RAG + LLM + actions
-        llm_result = await self._run_llm_and_actions(text, language, session_id, token=token)
-        timings.update(llm_result["timings"])
+        result = await self._run(text, language, session_id, token=token)
+        timings.update(result["timings"])
 
-        # TTS
         t0 = time.time()
-        audio_out = await azure_tts.synthesize(llm_result["text_out"], language=language)
+        audio_out = await azure_tts.synthesize(result["text_out"], language=language)
         timings["tts_ms"] = int((time.time() - t0) * 1000)
         timings["total_ms"] = sum(timings.values())
 
         return {
             "text_in": text,
             "language": language,
-            "text_out": llm_result["text_out"],
+            "text_out": result["text_out"],
             "audio_out": audio_out,
-            "action": llm_result["action"],
-            "appointment": llm_result["appointment"],
+            "action": result["action"],
+            "action_result": result["action_result"],
             "timings": timings,
         }

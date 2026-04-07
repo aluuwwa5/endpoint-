@@ -18,6 +18,9 @@ sentence-transformers==3.4.1
 # HTTP client (for teammate's booking API)
 httpx==0.28.1
 
+# Database
+asyncpg==0.30.0
+
 # Utils
 python-dotenv==1.0.1
 pydantic-settings==2.7.1

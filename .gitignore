@@ -5,3 +5,5 @@ __pycache__/
 venv/
 chroma_data/
 .cache/
+data/chat_history.db
+data/appointments.json
