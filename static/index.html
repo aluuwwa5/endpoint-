@@ -275,7 +275,7 @@
 
 <script>
     const SAMPLE_RATE = 16000;
-    const SESSION_ID  = crypto.randomUUID();
+    const SESSION_ID  = (crypto.randomUUID || (() => Math.random().toString(36).slice(2) + Date.now().toString(36)))();
     const AUTH_TOKEN  = new URLSearchParams(location.search).get('token')
                      || localStorage.getItem('access_token') || '';
 
