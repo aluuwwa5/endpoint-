@@ -113,6 +113,20 @@ class VoicePipeline:
         except KeyError as exc:
             logger.error("Action '%s' missing field: %s", action, exc)
         except Exception as exc:
+            from app.booking_client import BookingError
+            if isinstance(exc, BookingError):
+                if exc.status_code == 409:
+                    return {
+                        "ru": "К сожалению, этот слот уже занят. Давай выберем другое время?",
+                        "kk": "Өкінішке орай, бұл уақыт бос емес. Басқа уақыт таңдайық?",
+                        "en": "Sorry, that slot is already taken. Shall we pick another time?",
+                    }.get(language, "Slot already taken.")
+                if exc.status_code == 401:
+                    return {
+                        "ru": "Твоя сессия истекла. Пожалуйста, войди в систему заново.",
+                        "kk": "Сессияңыздың мерзімі аяқталды. Қайта кіріңіз.",
+                        "en": "Your session has expired. Please log in again.",
+                    }.get(language, "Session expired.")
             logger.error("Action '%s' failed: %s", action, exc)
 
         return None

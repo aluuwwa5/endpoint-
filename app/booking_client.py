@@ -193,6 +193,25 @@ async def get_formatted_appointments(token: str, lang: str = "ru") -> str:
 
 # ── Booking ────────────────────────────────────────────────────
 
+class BookingError(Exception):
+    """Raised when booking API returns a known error."""
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        self.message = message
+        super().__init__(message)
+
+
+def _handle_booking_error(r, action: str = "booking"):
+    """Raise BookingError with human-readable message for known HTTP errors."""
+    if r.status_code == 401:
+        raise BookingError(401, "token_expired")
+    if r.status_code == 409:
+        raise BookingError(409, "slot_taken")
+    if r.status_code == 404:
+        raise BookingError(404, "slot_not_found")
+    r.raise_for_status()
+
+
 async def book_appointment(
     token: str,
     slot_id: str,
@@ -200,22 +219,18 @@ async def book_appointment(
     phone_number: str = "",
     questionnaire: Optional[dict] = None,
 ) -> dict:
-    """Full booking flow: POST /reserve → POST /confirm.
-
-    Args:
-        questionnaire: dict with keys main_topic, avoid_topics, sleep, appetite, mood.
-    """
+    """Full booking flow: POST /reserve → POST /confirm."""
     async with _client(token) as c:
         # Step 1: reserve
         r = await c.post(f"/api/v1/student/slots/{slot_id}/reserve",
                          json={"booking_type": booking_type})
-        r.raise_for_status()
+        _handle_booking_error(r, "reserve")
         reserve_result = r.json()
         logger.info("Slot reserved: %s", reserve_result.get("message", ""))
 
         # Step 2: confirm
         if not phone_number:
-            phone_number = "+70000000000"  # placeholder if not collected
+            phone_number = "+70000000000"
 
         answers: dict = {
             "main_topic": (questionnaire or {}).get("main_topic", ""),
@@ -230,7 +245,7 @@ async def book_appointment(
             "answers": json.dumps(answers, ensure_ascii=False),
         }
         r = await c.post(f"/api/v1/student/slots/{slot_id}/confirm", json=body)
-        r.raise_for_status()
+        _handle_booking_error(r, "confirm")
         confirm_result = r.json()
         logger.info("Slot confirmed: %s", confirm_result.get("message", ""))
 
