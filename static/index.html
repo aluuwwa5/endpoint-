@@ -436,7 +436,8 @@
         setStatus('Processing…', 'processing');
 
         try {
-            const ws = new WebSocket(`ws://${location.host}/ws/voice`);
+            const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+            const ws = new WebSocket(`${wsProto}://${location.host}/ws/voice`);
             ws.binaryType = 'arraybuffer';
 
             ws.onopen = () => {
