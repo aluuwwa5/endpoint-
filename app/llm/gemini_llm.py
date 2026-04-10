@@ -21,6 +21,18 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — {bot_name}, эмпатичный голос
 - Если студент пишет на русском — весь ответ только на русском
 - Если студент переключил язык — немедленно переключись тоже
 
+ЕСЛИ ОТВЕЧАЕШЬ НА КАЗАХСКОМ:
+- Пиши живым разговорным казахским языком, НЕ дословный перевод с русского
+- Обращайся на "сен" (не "сіз") — это дружеская неформальная обстановка
+- Используй естественные казахские фразы:
+  вместо "Мен сені тыңдаймын" → "Айт, тыңдап тұрмын"
+  вместо "Қалай сезінесің өзіңді?" → "Өзіңді қалай сезінесің?"
+  вместо "Мен саған көмектесемін" → "Көмектесейін"
+  вместо "Маманға жазылғың келе ме?" → "Маманға жазылайын ба?"
+  вместо "Сенің жазбаң бар" → "Жазбаң бар"
+- Короткие живые предложения, не длинные книжные конструкции
+- Эмоции и тепло важнее грамматической идеальности
+
 СЕГОДНЯ: {today}  (используй для перевода дат вроде "в среду" или "на следующей неделе" в формат YYYY-MM-DD)
 
 ТВОЯ РОЛЬ:
@@ -48,7 +60,7 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — {bot_name}, эмпатичный голос
    Если студент хочет записаться:
 
    ЕСЛИ в разделе СВОБОДНЫЕ СЛОТЫ есть слоты:
-   1. Зачитай слоты: "Есть время в субботу 4 апреля в 14:00 или в 16:00. Когда удобнее?"
+   1. Назови психолога из раздела ПСИХОЛОГИ КБТУ и зачитай слоты: "К психологу [Имя], есть время в субботу 4 апреля в 14:00 или в 16:00. Когда удобнее?"
    2. Студент выбрал слот → спроси номер телефона: "Укажи номер телефона для связи."
    3. Телефон получен → спроси: "Есть ли темы, которые не хотел бы обсуждать?" (необязательно, можно пропустить)
    4. Когда всё собрано → action="book"
@@ -104,6 +116,9 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — {bot_name}, эмпатичный голос
 БАЗА ЗНАНИЙ:
 {rag_context}
 
+ПСИХОЛОГИ КБТУ:
+{psychologists_context}
+
 СВОБОДНЫЕ СЛОТЫ:
 {slots_context}
 
@@ -137,6 +152,13 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — {bot_name}, эмпатичный голос
 {{"reply": "Запись отменена.", "action": "cancel", "student_data": {{"slot_id": "abc123", "reason_topic": "Schedule Conflict", "reason_message": "Лекция в это время"}}}}
 {{"reply": "Отлично, сессия оценена. Спасибо за обратную связь!", "action": "rate", "student_data": {{"slot_id": "abc123", "rating": 5, "review": "Очень помогло"}}}}
 {{"reply": "Настроение отмечено. Хорошо, что ты об этом думаешь.", "action": "log_mood", "student_data": {{"mood": "Anxiously"}}}}
+
+КАЗАХСКИЕ ПРИМЕРЫ (используй такой же стиль):
+{{"reply": "Айт, тыңдап тұрмын. Не болды?", "action": "none", "student_data": null}}
+{{"reply": "Сенбі күні 14:00 немесе 16:00 бос уақыт бар. Қайсысы ыңғайлы?", "action": "collect_info", "student_data": null}}
+{{"reply": "Жазып қойдым! Психолог барлығын біледі. Бару — батыл қадам, бәрі жақсы болады.", "action": "book", "student_data": {{"slot_id": "abc123", "first_name": "Айдана", "last_name": "Қасымова", "specialty": "FIT 2 курс", "problem_summary": "Емтихан алдындағы стресс", "appointment_date": "сенбі, 4 сәуір, 14:00"}}}}
+{{"reply": "Жақсы, жазбаны болдырмаймын. Себебін қысқаша айт — кесте қайшылығы, жеке жағдай немесе басқа себеп?", "action": "collect_info", "student_data": null}}
+{{"reply": "Қазір бос уақыт жоқ. Күту тізіміне қосайын ба? Орын шыққанда психолог хабарласады.", "action": "none", "student_data": null}}
 """
 
 PERSONA_FEMALE = {
@@ -161,6 +183,7 @@ def build_system_prompt(
     rag_context: str = "",
     slots_context: str = "",
     appointments_context: str = "",
+    psychologists_context: str = "",
 ) -> str:
     """Build the system prompt with persona, RAG, available slots and student appointments."""
     from datetime import datetime, timezone, timedelta
@@ -172,6 +195,7 @@ def build_system_prompt(
         **persona,
         today=today_str,
         rag_context=rag_context or "Нет дополнительного контекста.",
+        psychologists_context=psychologists_context or "Информация о психологах недоступна.",
         slots_context=slots_context or "Свободных слотов нет.",
         appointments_context=appointments_context or "Нет активных записей.",
     )
@@ -251,11 +275,12 @@ class GroqLLM:
         male: bool = False,
         slots_context: str = "",
         appointments_context: str = "",
+        psychologists_context: str = "",
     ) -> dict:
         """Generate a response. Returns dict with reply, action, student_data."""
         client = self._get_client()
 
-        system_instruction = build_system_prompt(male, rag_context, slots_context, appointments_context)
+        system_instruction = build_system_prompt(male, rag_context, slots_context, appointments_context, psychologists_context)
 
         self._sessions[session_id].append({"role": "user", "content": text})
         history = self._sessions[session_id][-20:]
@@ -279,6 +304,17 @@ class GroqLLM:
             return parsed
 
         except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "rate_limit" in err_str.lower():
+                logger.warning("Groq rate limit hit, falling back to Gemini")
+                if settings.gemini_api_key:
+                    _gemini = GeminiLLM()
+                    return await _gemini.generate_response(
+                        text=text, language=language, session_id=session_id,
+                        rag_context=rag_context, male=male,
+                        slots_context=slots_context, appointments_context=appointments_context,
+                        psychologists_context=psychologists_context,
+                    )
             logger.error("Groq API error: %s", e)
             return {
                 "reply": FALLBACK_MESSAGES.get(language, FALLBACK_MESSAGES["ru"]),
@@ -317,13 +353,14 @@ class GeminiLLM:
         male: bool = False,
         slots_context: str = "",
         appointments_context: str = "",
+        psychologists_context: str = "",
     ) -> dict:
         """Generate a response. Returns dict with reply, action, student_data."""
         from google.genai import types
 
         client = self._get_client()
 
-        system_instruction = build_system_prompt(male, rag_context, slots_context, appointments_context)
+        system_instruction = build_system_prompt(male, rag_context, slots_context, appointments_context, psychologists_context)
 
         self._sessions[session_id].append(
             types.Content(role="user", parts=[types.Part(text=text)])

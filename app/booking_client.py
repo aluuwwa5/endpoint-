@@ -147,11 +147,37 @@ def format_slots_for_llm(slots: list[dict], lang: str = "ru") -> str:
     return "\n".join(lines)
 
 
-async def get_formatted_slots(token: str, lang: str = "ru") -> str:
+async def get_formatted_slots(token: str, lang: str = "ru", max_slots: int = 6) -> str:
     try:
-        return format_slots_for_llm(await get_available_slots(token), lang)
+        slots = await get_available_slots(token)
+        return format_slots_for_llm(slots[:max_slots], lang)
     except Exception as exc:
         logger.error("get_formatted_slots: %s", exc)
+        return ""
+
+
+async def get_formatted_psychologists(token: str) -> str:
+    """Format psychologist list for LLM context."""
+    try:
+        psychologists = await list_psychologists(token)
+        if not psychologists:
+            return ""
+        lines = []
+        for p in psychologists:
+            name = p.get("full_name") or p.get("name", "")
+            spec = p.get("specialization") or p.get("specialty") or p.get("position", "")
+            pid = p.get("id") or p.get("user_id", "")
+            exp = p.get("experience_years")
+            line = f"- {name}"
+            if spec:
+                line += f", {spec}"
+            if exp:
+                line += f", опыт {exp} лет"
+            line += f"  [psychologist_id: {pid}]"
+            lines.append(line)
+        return "\n".join(lines)
+    except Exception as exc:
+        logger.error("get_formatted_psychologists: %s", exc)
         return ""
 
 

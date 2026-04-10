@@ -21,12 +21,12 @@ class VoicePipeline:
 
     # ── Context fetching ──────────────────────────────────────
 
-    async def _fetch_context(self, text: str, language: str, token: str) -> tuple[str, str, str]:
-        """Fetch RAG context, available slots, and student appointments in parallel.
+    async def _fetch_context(self, text: str, language: str, token: str) -> tuple[str, str, str, str]:
+        """Fetch RAG context, available slots, student appointments, and psychologists in parallel.
 
-        Returns (rag_context, slots_context, appointments_context).
+        Returns (rag_context, slots_context, appointments_context, psychologists_context).
         """
-        from app.booking_client import get_formatted_slots, get_formatted_appointments
+        from app.booking_client import get_formatted_slots, get_formatted_appointments, get_formatted_psychologists
 
         async def _no_context() -> str:
             return ""
@@ -34,17 +34,20 @@ class VoicePipeline:
         rag_task = asyncio.to_thread(knowledge_base.retrieve, text)
         slots_task = get_formatted_slots(token, lang=language) if token else _no_context()
         appointments_task = get_formatted_appointments(token, lang=language) if token else _no_context()
+        psychologists_task = get_formatted_psychologists(token) if token else _no_context()
 
-        rag_ctx, slots_ctx, appts_ctx = await asyncio.gather(
-            rag_task, slots_task, appointments_task
+        rag_ctx, slots_ctx, appts_ctx, psychologists_ctx = await asyncio.gather(
+            rag_task, slots_task, appointments_task, psychologists_task
         )
 
         if slots_ctx:
             logger.info("Slots context: %d chars", len(slots_ctx))
         if appts_ctx:
             logger.info("Appointments context: %d chars", len(appts_ctx))
+        if psychologists_ctx:
+            logger.info("Psychologists context: %d chars", len(psychologists_ctx))
 
-        return rag_ctx, slots_ctx, appts_ctx
+        return rag_ctx, slots_ctx, appts_ctx, psychologists_ctx
 
     # ── Action handlers ───────────────────────────────────────
 
@@ -141,7 +144,7 @@ class VoicePipeline:
         timings: dict[str, int] = {}
 
         t0 = time.time()
-        rag_ctx, slots_ctx, appts_ctx = await self._fetch_context(text, language, token)
+        rag_ctx, slots_ctx, appts_ctx, psychologists_ctx = await self._fetch_context(text, language, token)
         timings["rag_ms"] = int((time.time() - t0) * 1000)
 
         t0 = time.time()
@@ -153,6 +156,7 @@ class VoicePipeline:
             male=male,
             slots_context=slots_ctx,
             appointments_context=appts_ctx,
+            psychologists_context=psychologists_ctx,
         )
         timings["llm_ms"] = int((time.time() - t0) * 1000)
 
