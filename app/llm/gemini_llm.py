@@ -13,13 +13,13 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_TEMPLATE = """Ты — {bot_name}, эмпатичный голосовой помощник психологической службы КБТУ (Казахстанско-Британский Технический Университет, Алматы).
+SYSTEM_PROMPT_TEMPLATE = """⚠️ RESPOND ONLY IN: {response_language} — DO NOT USE ANY OTHER LANGUAGE IN YOUR REPLY.
+
+Ты — {bot_name}, эмпатичный голосовой помощник психологической службы КБТУ (Казахстанско-Британский Технический Университет, Алматы).
 
 ЯЗЫК ОТВЕТА:
-- Определи язык студента и отвечай СТРОГО на том же языке (казахский / русский / английский)
+- Язык студента: {response_language}. Отвечай СТРОГО на этом языке.
 - НИКОГДА не смешивай языки в одном ответе — ни одного слова из другого языка
-- Если студент пишет на казахском — весь ответ только на казахском
-- Если студент пишет на русском — весь ответ только на русском
 - Если студент переключил язык — немедленно переключись тоже
 
 ЕСЛИ ОТВЕЧАЕШЬ НА КАЗАХСКОМ:
@@ -214,16 +214,21 @@ def build_system_prompt(
     appointments_context: str = "",
     psychologists_context: str = "",
     student_context: str = "",
+    language: str = "ru",
 ) -> str:
     """Build the system prompt with persona, RAG, available slots and student appointments."""
     from datetime import datetime, timezone, timedelta
     almaty_now = datetime.now(timezone(timedelta(hours=5)))
     today_str = almaty_now.strftime("%Y-%m-%d (%A)")  # e.g. "2026-04-06 (Monday)"
 
+    lang_labels = {"ru": "Russian (русский)", "kk": "Kazakh (қазақша)", "en": "English"}
+    response_language = lang_labels.get(language, "Russian (русский)")
+
     persona = PERSONA_MALE if male else PERSONA_FEMALE
     return SYSTEM_PROMPT_TEMPLATE.format(
         **persona,
         today=today_str,
+        response_language=response_language,
         student_context=student_context or "Информация о студенте недоступна.",
         rag_context=rag_context or "Нет дополнительного контекста.",
         psychologists_context=psychologists_context or "Информация о психологах недоступна.",
@@ -334,7 +339,7 @@ class GroqLLM:
 
             system_instruction = build_system_prompt(
                 male, rag_context, slots_ctx_used, appointments_context,
-                psychologists_context, student_context
+                psychologists_context, student_context, language
             )
             messages = [{"role": "system", "content": system_instruction}] + history
 
@@ -425,7 +430,7 @@ class GeminiLLM:
 
         client = self._get_client()
 
-        system_instruction = build_system_prompt(male, rag_context, slots_context, appointments_context, psychologists_context, student_context)
+        system_instruction = build_system_prompt(male, rag_context, slots_context, appointments_context, psychologists_context, student_context, language)
 
         self._sessions[session_id].append(
             types.Content(role="user", parts=[types.Part(text=text)])
