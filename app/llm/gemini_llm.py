@@ -4,6 +4,7 @@ The bot acts as an empathetic psychological support assistant for KBTU students.
 It conducts guided conversations, provides mini-consultations, and can book appointments.
 """
 
+import asyncio
 import json
 import logging
 from collections import defaultdict
@@ -313,26 +314,35 @@ class GroqLLM:
         last_err = None
 
         for model in groq_models:
-            try:
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=800,
-                )
+            # For the primary model, retry once after a short wait on 429
+            attempts = 2 if model == "llama-3.3-70b-versatile" else 1
+            for attempt in range(attempts):
+                try:
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=800,
+                    )
 
-                raw = response.choices[0].message.content or ""
-                parsed = parse_llm_response(raw)
+                    raw = response.choices[0].message.content or ""
+                    parsed = parse_llm_response(raw)
 
-                self._sessions[session_id].append({"role": "assistant", "content": raw})
+                    self._sessions[session_id].append({"role": "assistant", "content": raw})
 
-                logger.info("Groq response model=%s (lang=%s, action=%s): '%s'", model, language, parsed["action"], parsed["reply"][:80])
-                return parsed
+                    logger.info("Groq response model=%s (lang=%s, action=%s): '%s'", model, language, parsed["action"], parsed["reply"][:80])
+                    return parsed
 
-            except Exception as e:
-                logger.warning("Groq error on model=%s, trying next: %s", model, str(e)[:120])
-                last_err = e
-                continue
+                except Exception as e:
+                    err_str = str(e)
+                    is_rate_limit = "429" in err_str or "rate_limit" in err_str.lower()
+                    if is_rate_limit and attempt == 0 and attempts > 1:
+                        logger.warning("Groq 429 on model=%s, retrying in 5s...", model)
+                        await asyncio.sleep(5)
+                        continue
+                    logger.warning("Groq error on model=%s, trying next: %s", model, err_str[:120])
+                    last_err = e
+                    break
 
         # All Groq models exhausted — try Gemini
         logger.warning("All Groq models failed, falling back to Gemini. Last error: %s", last_err)
