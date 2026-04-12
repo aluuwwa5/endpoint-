@@ -91,51 +91,74 @@ async def get_psychologist_id(token: str) -> str:
 # ── Slots ──────────────────────────────────────────────────────
 
 async def get_available_slots(token: str, days_ahead: int = 14) -> list[dict]:
-    """Fetch free slots for the next `days_ahead` days, sorted by start_time."""
-    psychologist_id = await get_psychologist_id(token)
+    """Fetch free slots for the next `days_ahead` days across all psychologists, sorted by start_time."""
     now = datetime.now(ALMATY_TZ)
+    today = now.date()
+    cutoff = (now + timedelta(days=days_ahead)).date()
     free_slots: list[dict] = []
 
+    months_to_query: set[tuple[int, int]] = set()
+    for offset in range(days_ahead + 1):
+        d = now + timedelta(days=offset)
+        months_to_query.add((d.year, d.month))
+
+    # Fetch slots for all psychologists
+    psychologists = await list_psychologists(token)
+    if not psychologists:
+        # fallback to single configured psychologist
+        pid = await get_psychologist_id(token)
+        psychologist_ids = [pid]
+    else:
+        psychologist_ids = [p.get("id") or p.get("user_id", "") for p in psychologists]
+        psychologist_ids = [pid for pid in psychologist_ids if pid]
+
+    logger.info("Fetching slots for %d psychologist(s): %s", len(psychologist_ids), psychologist_ids)
+
     async with _client(token) as c:
-        months_to_query: set[tuple[int, int]] = set()
-        for offset in range(days_ahead + 1):
-            d = now + timedelta(days=offset)
-            months_to_query.add((d.year, d.month))
+        for psychologist_id in psychologist_ids:
+            available_dates: set[str] = set()
+            for year, month in sorted(months_to_query):
+                try:
+                    r = await c.get("/api/v1/slots/calendar", params={
+                        "psychologist_id": psychologist_id, "year": str(year), "month": str(month),
+                    })
+                    r.raise_for_status()
+                    dates = r.json().get("available_dates") or []
+                    logger.info("Calendar psych=%s %s-%s: %d dates", psychologist_id[:8], year, month, len(dates))
+                    for d in dates:
+                        available_dates.add(d)
+                except Exception as exc:
+                    logger.error("calendar error psych=%s %s-%s: %s", psychologist_id[:8], year, month, exc)
 
-        available_dates: set[str] = set()
-        for year, month in sorted(months_to_query):
-            try:
-                r = await c.get("/api/v1/slots/calendar", params={
-                    "psychologist_id": psychologist_id, "year": str(year), "month": str(month),
-                })
-                r.raise_for_status()
-                for d in (r.json().get("available_dates") or []):
-                    available_dates.add(d)
-            except Exception as exc:
-                logger.error("calendar error %s-%s: %s", year, month, exc)
+            target_dates = sorted(
+                d for d in available_dates
+                if today <= datetime.fromisoformat(d).date() <= cutoff
+            )
 
-        today = now.date()
-        cutoff = (now + timedelta(days=days_ahead)).date()
-        target_dates = sorted(
-            d for d in available_dates
-            if today <= datetime.fromisoformat(d).date() <= cutoff
-        )
-
-        for date_str in target_dates:
-            try:
-                r = await c.get("/api/v1/slots", params={
-                    "psychologist_id": psychologist_id, "date": date_str,
-                })
-                r.raise_for_status()
-                slots = r.json()
-                if isinstance(slots, list):
-                    for s in slots:
-                        if s.get("status") == "available":
-                            free_slots.append(s)
-            except Exception as exc:
-                logger.error("slots error for %s: %s", date_str, exc)
+            for date_str in target_dates:
+                try:
+                    r = await c.get("/api/v1/slots", params={
+                        "psychologist_id": psychologist_id, "date": date_str,
+                    })
+                    r.raise_for_status()
+                    slots = r.json()
+                    if isinstance(slots, list):
+                        # find psychologist name for display
+                        psych_name = next(
+                            (p.get("full_name") or p.get("name", "") for p in psychologists
+                             if (p.get("id") or p.get("user_id", "")) == psychologist_id),
+                            ""
+                        )
+                        for s in slots:
+                            if s.get("status") == "available":
+                                if psych_name and not s.get("psychologist_name"):
+                                    s = dict(s, psychologist_name=psych_name)
+                                free_slots.append(s)
+                except Exception as exc:
+                    logger.error("slots error psych=%s date=%s: %s", psychologist_id[:8], date_str, exc)
 
     free_slots.sort(key=lambda s: s["start_time"])
+    logger.info("Total free slots found: %d", len(free_slots))
     return free_slots
 
 
@@ -143,8 +166,13 @@ def format_slots_for_llm(slots: list[dict], lang: str = "ru") -> str:
     """Format slot list as numbered text for LLM context injection."""
     if not slots:
         return {"ru": "Свободных слотов нет.", "kk": "Бос уақыт табылмады.", "en": "No available slots."}.get(lang, "No slots.")
-    lines = [f"{i}. {_fmt_dt(s['start_time'], lang)}  [slot_id: {s['id']}]"
-             for i, s in enumerate(slots, 1)]
+    lines = []
+    for i, s in enumerate(slots, 1):
+        line = f"{i}. {_fmt_dt(s['start_time'], lang)}"
+        if s.get("psychologist_name"):
+            line += f" — {s['psychologist_name']}"
+        line += f"  [slot_id: {s['id']}]"
+        lines.append(line)
     return "\n".join(lines)
 
 
