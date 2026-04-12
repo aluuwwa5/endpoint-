@@ -311,17 +311,31 @@ class GroqLLM:
         """Generate a response. Returns dict with reply, action, student_data."""
         client = self._get_client()
 
-        system_instruction = build_system_prompt(male, rag_context, slots_context, appointments_context, psychologists_context, student_context)
-
         self._sessions[session_id].append({"role": "user", "content": text})
-        history = self._sessions[session_id][-20:]
 
-        messages = [{"role": "system", "content": system_instruction}] + history
-
-        groq_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemma2-9b-it"]
+        # Models with their context limits: large models get full context, small get compact
+        groq_models = [
+            ("llama-3.3-70b-versatile", False),   # full context
+            ("llama-3.1-70b-versatile", False),    # full context
+            ("llama-3.1-8b-instant", True),        # compact context (8k limit)
+        ]
         last_err = None
 
-        for model in groq_models:
+        for model, compact in groq_models:
+            # Compact mode: fewer slots and shorter history for small-context models
+            if compact:
+                slots_ctx_used = "\n".join(slots_context.splitlines()[:3]) if slots_context else ""
+                history = self._sessions[session_id][-6:]
+            else:
+                slots_ctx_used = slots_context
+                history = self._sessions[session_id][-20:]
+
+            system_instruction = build_system_prompt(
+                male, rag_context, slots_ctx_used, appointments_context,
+                psychologists_context, student_context
+            )
+            messages = [{"role": "system", "content": system_instruction}] + history
+
             # For the primary model, retry once after a short wait on 429
             attempts = 2 if model == "llama-3.3-70b-versatile" else 1
             for attempt in range(attempts):
@@ -416,7 +430,7 @@ class GeminiLLM:
         )
         history = self._sessions[session_id][-20:]
 
-        gemini_models = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-latest"]
+        gemini_models = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"]
 
         for model in gemini_models:
             try:
