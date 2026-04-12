@@ -315,9 +315,10 @@ class GroqLLM:
 
         # Models with their context limits: large models get full context, small get compact
         groq_models = [
-            ("llama-3.3-70b-versatile", False),   # full context
-            ("llama-3.1-70b-versatile", False),    # full context
-            ("llama-3.1-8b-instant", True),        # compact context (8k limit)
+            ("llama-3.3-70b-versatile", False),                      # full context
+            ("meta-llama/llama-4-scout-17b-16e-instruct", False),    # full context
+            ("qwen/qwen3-32b", False),                                # full context
+            ("llama-3.1-8b-instant", True),                          # compact context (8k limit)
         ]
         last_err = None
 
