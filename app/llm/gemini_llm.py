@@ -309,7 +309,7 @@ class GroqLLM:
 
         messages = [{"role": "system", "content": system_instruction}] + history
 
-        groq_models = ["llama-3.3-70b-versatile", "llama3-8b-8192", "llama-3.1-8b-instant"]
+        groq_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemma2-9b-it"]
         last_err = None
 
         for model in groq_models:
@@ -330,14 +330,9 @@ class GroqLLM:
                 return parsed
 
             except Exception as e:
-                err_str = str(e)
-                if "429" in err_str or "rate_limit" in err_str.lower():
-                    logger.warning("Groq rate limit on model=%s, trying next", model)
-                    last_err = e
-                    continue
-                logger.error("Groq API error (model=%s): %s", model, e)
+                logger.warning("Groq error on model=%s, trying next: %s", model, str(e)[:120])
                 last_err = e
-                break
+                continue
 
         # All Groq models exhausted — try Gemini
         logger.warning("All Groq models failed, falling back to Gemini. Last error: %s", last_err)
@@ -401,7 +396,7 @@ class GeminiLLM:
         )
         history = self._sessions[session_id][-20:]
 
-        gemini_models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
+        gemini_models = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-latest"]
 
         for model in gemini_models:
             try:
@@ -426,12 +421,8 @@ class GeminiLLM:
                 return parsed
 
             except Exception as e:
-                err_str = str(e)
-                if "429" in err_str or "quota" in err_str.lower() or "rate" in err_str.lower():
-                    logger.warning("Gemini rate limit on model=%s, trying next", model)
-                    continue
-                logger.error("Gemini API error (model=%s): %s", model, e)
-                break
+                logger.warning("Gemini error on model=%s, trying next: %s", model, str(e)[:120])
+                continue
 
         logger.error("All Gemini models exhausted")
         return {
