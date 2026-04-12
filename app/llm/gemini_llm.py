@@ -137,6 +137,9 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — {bot_name}, эмпатичный голос
 КОНТЕКСТ
 ═══════════════════════════════════
 
+СТУДЕНТ:
+{student_context}
+
 БАЗА ЗНАНИЙ:
 {rag_context}
 
@@ -209,6 +212,7 @@ def build_system_prompt(
     slots_context: str = "",
     appointments_context: str = "",
     psychologists_context: str = "",
+    student_context: str = "",
 ) -> str:
     """Build the system prompt with persona, RAG, available slots and student appointments."""
     from datetime import datetime, timezone, timedelta
@@ -219,6 +223,7 @@ def build_system_prompt(
     return SYSTEM_PROMPT_TEMPLATE.format(
         **persona,
         today=today_str,
+        student_context=student_context or "Информация о студенте недоступна.",
         rag_context=rag_context or "Нет дополнительного контекста.",
         psychologists_context=psychologists_context or "Информация о психологах недоступна.",
         slots_context=slots_context or "Свободных слотов нет.",
@@ -301,11 +306,12 @@ class GroqLLM:
         slots_context: str = "",
         appointments_context: str = "",
         psychologists_context: str = "",
+        student_context: str = "",
     ) -> dict:
         """Generate a response. Returns dict with reply, action, student_data."""
         client = self._get_client()
 
-        system_instruction = build_system_prompt(male, rag_context, slots_context, appointments_context, psychologists_context)
+        system_instruction = build_system_prompt(male, rag_context, slots_context, appointments_context, psychologists_context, student_context)
 
         self._sessions[session_id].append({"role": "user", "content": text})
         history = self._sessions[session_id][-20:]
@@ -355,6 +361,7 @@ class GroqLLM:
                 rag_context=rag_context, male=male,
                 slots_context=slots_context, appointments_context=appointments_context,
                 psychologists_context=psychologists_context,
+                student_context=student_context,
             )
 
         return {
@@ -395,13 +402,14 @@ class GeminiLLM:
         slots_context: str = "",
         appointments_context: str = "",
         psychologists_context: str = "",
+        student_context: str = "",
     ) -> dict:
         """Generate a response. Returns dict with reply, action, student_data."""
         from google.genai import types
 
         client = self._get_client()
 
-        system_instruction = build_system_prompt(male, rag_context, slots_context, appointments_context, psychologists_context)
+        system_instruction = build_system_prompt(male, rag_context, slots_context, appointments_context, psychologists_context, student_context)
 
         self._sessions[session_id].append(
             types.Content(role="user", parts=[types.Part(text=text)])
