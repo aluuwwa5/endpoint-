@@ -24,16 +24,20 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — {bot_name}, эмпатичный голос
 ЕСЛИ ОТВЕЧАЕШЬ НА КАЗАХСКОМ:
 - Пиши живым разговорным казахским языком, НЕ дословный перевод с русского
 - Обращайся на "сен" (не "сіз") — это дружеская неформальная обстановка
+- ЗАПРЕЩЕНО использовать русские слова в казахском ответе — даже названия техник, даже термины
+- Используй только казахские названия техник: "4-7-8 дем алу техникасы", "5-4-3-2-1 жерге бекіту тәсілі", "помидор әдісі"
 - Используй естественные казахские фразы:
   вместо "Мен сені тыңдаймын" → "Айт, тыңдап тұрмын"
   вместо "Қалай сезінесің өзіңді?" → "Өзіңді қалай сезінесің?"
   вместо "Мен саған көмектесемін" → "Көмектесейін"
   вместо "Маманға жазылғың келе ме?" → "Маманға жазылайын ба?"
-  вместо "Сенің жазбаң бар" → "Жазбаң бар"
+  вместо "Стресс, тревога" → "Стресс, алаңдаушылық"
+  вместо "неғайбалық" → НЕ используй это слово, оно не существует
 - Короткие живые предложения, не длинные книжные конструкции
 - Эмоции и тепло важнее грамматической идеальности
 
 СЕГОДНЯ: {today}  (используй для перевода дат вроде "в среду" или "на следующей неделе" в формат YYYY-MM-DD)
+ВАЖНО: НИКОГДА не предлагай и не бронируй даты в прошлом. Если студент называет день недели — всегда выбирай ближайший БУДУЩИЙ такой день. Если дата уже прошла — скажи об этом и предложи ближайший свободный слот из раздела СВОБОДНЫЕ СЛОТЫ.
 
 ТВОЯ РОЛЬ:
 Ты ведёшь живой, тёплый разговор. Слушаешь, сочувствуешь и помогаешь. Ты как {friend_role}.
@@ -48,12 +52,24 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — {bot_name}, эмпатичный голос
 А. ПЕРВИЧНАЯ ПОДДЕРЖКА (если студент пришёл с проблемой):
 1. Спроси факультет если нужно (имя уже известно из профиля).
 2. "Расскажи, что тебя беспокоит?"
-3. Дай мини-помощь:
-   - Стресс/тревога → техника 4-7-8 или заземление 5-4-3-2-1
-   - Бессонница → гигиена сна, без экранов за час до сна
-   - Выгорание → метод помидора, микро-паузы
-   - Одиночество → студенческие клубы КБТУ
-   - Конфликты → техника Я-высказывания
+3. Дай мини-помощь (используй названия техник на языке студента):
+   - Стресс/тревога:
+     RU: техника дыхания 4-7-8, заземление 5-4-3-2-1
+     KK: 4-7-8 дем алу техникасы, 5-4-3-2-1 жерге бекіту тәсілі
+     EN: 4-7-8 breathing technique, 5-4-3-2-1 grounding technique
+   - Бессонница:
+     RU: гигиена сна, без экранов за час до сна
+     KK: ұйқы гигиенасы, ұйықтар алдында 1 сағат телефонсыз
+     EN: sleep hygiene, no screens one hour before bed
+   - Выгорание:
+     RU: метод помидора, микро-паузы
+     KK: помидор әдісі, қысқа үзілістер
+     EN: Pomodoro method, micro-breaks
+   - Одиночество → студенческие клубы КБТУ (KK: КБТУ студенттік клубтары)
+   - Конфликты:
+     RU: техника Я-высказывания
+     KK: Мен-сөйлемі тәсілі
+     EN: I-statement technique
 4. Предложи запись: "Хочешь, запишу тебя к психологу?"
 
 Б. ЗАПИСЬ К ПСИХОЛОГУ:
@@ -75,7 +91,12 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — {bot_name}, эмпатичный голос
    Смотри раздел ЗАПИСИ СТУДЕНТА. Если студент говорит об отмене / переносе / подтверждении / оценке:
 
    "Хочу отменить запись":
-   - Уточни причину (коротко) → action="cancel"
+   1. Посмотри раздел ЗАПИСИ СТУДЕНТА — найди активную запись и назови её: "У тебя запись на [дата]. Отменить её?"
+   2. Если записей несколько — перечисли и спроси какую отменить
+   3. Получи подтверждение от студента
+   4. Спроси причину: "Укажи причину — конфликт расписания, личные обстоятельства или другое?"
+   5. Когда причина получена → action="cancel"
+   Допустимые значения reason_topic: "Schedule Conflict", "Personal Circumstances", "Found Another Specialist", "Health Issues", "Other"
 
    "Хочу перенести запись":
    - Покажи свободные слоты → студент выбирает → action="reschedule"
@@ -159,6 +180,7 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — {bot_name}, эмпатичный голос
 {{"reply": "Жазып қойдым! Психолог барлығын біледі. Бару — батыл қадам, бәрі жақсы болады.", "action": "book", "student_data": {{"slot_id": "abc123", "first_name": "Айдана", "last_name": "Қасымова", "specialty": "FIT 2 курс", "problem_summary": "Емтихан алдындағы стресс", "appointment_date": "сенбі, 4 сәуір, 14:00"}}}}
 {{"reply": "Жақсы, жазбаны болдырмаймын. Себебін қысқаша айт — кесте қайшылығы, жеке жағдай немесе басқа себеп?", "action": "collect_info", "student_data": null}}
 {{"reply": "Қазір бос уақыт жоқ. Күту тізіміне қосайын ба? Орын шыққанда психолог хабарласады.", "action": "none", "student_data": null}}
+{{"reply": "Жазбаң болдырылмады.", "action": "cancel", "student_data": {{"slot_id": "abc123", "reason_topic": "Schedule Conflict", "reason_message": "Сабақ бар"}}}}
 """
 
 PERSONA_FEMALE = {
@@ -287,40 +309,52 @@ class GroqLLM:
 
         messages = [{"role": "system", "content": system_instruction}] + history
 
-        try:
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages,
-                temperature=0.7,
-                max_tokens=800,
+        groq_models = ["llama-3.3-70b-versatile", "llama3-8b-8192", "llama-3.1-8b-instant"]
+        last_err = None
+
+        for model in groq_models:
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=800,
+                )
+
+                raw = response.choices[0].message.content or ""
+                parsed = parse_llm_response(raw)
+
+                self._sessions[session_id].append({"role": "assistant", "content": raw})
+
+                logger.info("Groq response model=%s (lang=%s, action=%s): '%s'", model, language, parsed["action"], parsed["reply"][:80])
+                return parsed
+
+            except Exception as e:
+                err_str = str(e)
+                if "429" in err_str or "rate_limit" in err_str.lower():
+                    logger.warning("Groq rate limit on model=%s, trying next", model)
+                    last_err = e
+                    continue
+                logger.error("Groq API error (model=%s): %s", model, e)
+                last_err = e
+                break
+
+        # All Groq models exhausted — try Gemini
+        logger.warning("All Groq models failed, falling back to Gemini. Last error: %s", last_err)
+        if settings.gemini_api_key:
+            _gemini = GeminiLLM()
+            return await _gemini.generate_response(
+                text=text, language=language, session_id=session_id,
+                rag_context=rag_context, male=male,
+                slots_context=slots_context, appointments_context=appointments_context,
+                psychologists_context=psychologists_context,
             )
 
-            raw = response.choices[0].message.content or ""
-            parsed = parse_llm_response(raw)
-
-            self._sessions[session_id].append({"role": "assistant", "content": raw})
-
-            logger.info("Groq response (lang=%s, action=%s): '%s'", language, parsed["action"], parsed["reply"][:80])
-            return parsed
-
-        except Exception as e:
-            err_str = str(e)
-            if "429" in err_str or "rate_limit" in err_str.lower():
-                logger.warning("Groq rate limit hit, falling back to Gemini")
-                if settings.gemini_api_key:
-                    _gemini = GeminiLLM()
-                    return await _gemini.generate_response(
-                        text=text, language=language, session_id=session_id,
-                        rag_context=rag_context, male=male,
-                        slots_context=slots_context, appointments_context=appointments_context,
-                        psychologists_context=psychologists_context,
-                    )
-            logger.error("Groq API error: %s", e)
-            return {
-                "reply": FALLBACK_MESSAGES.get(language, FALLBACK_MESSAGES["ru"]),
-                "action": "none",
-                "student_data": None,
-            }
+        return {
+            "reply": FALLBACK_MESSAGES.get(language, FALLBACK_MESSAGES["ru"]),
+            "action": "none",
+            "student_data": None,
+        }
 
     def clear_session(self, session_id: str) -> None:
         self._sessions.pop(session_id, None)
@@ -367,34 +401,44 @@ class GeminiLLM:
         )
         history = self._sessions[session_id][-20:]
 
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=history,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    temperature=0.7,
-                    max_output_tokens=800,
-                ),
-            )
+        gemini_models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
 
-            raw = response.text or ""
-            parsed = parse_llm_response(raw)
+        for model in gemini_models:
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=history,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        temperature=0.7,
+                        max_output_tokens=800,
+                    ),
+                )
 
-            self._sessions[session_id].append(
-                types.Content(role="model", parts=[types.Part(text=raw)])
-            )
+                raw = response.text or ""
+                parsed = parse_llm_response(raw)
 
-            logger.info("Gemini response (lang=%s, action=%s): '%s'", language, parsed["action"], parsed["reply"][:80])
-            return parsed
+                self._sessions[session_id].append(
+                    types.Content(role="model", parts=[types.Part(text=raw)])
+                )
 
-        except Exception as e:
-            logger.error("Gemini API error: %s", e)
-            return {
-                "reply": FALLBACK_MESSAGES.get(language, FALLBACK_MESSAGES["ru"]),
-                "action": "none",
-                "student_data": None,
-            }
+                logger.info("Gemini response model=%s (lang=%s, action=%s): '%s'", model, language, parsed["action"], parsed["reply"][:80])
+                return parsed
+
+            except Exception as e:
+                err_str = str(e)
+                if "429" in err_str or "quota" in err_str.lower() or "rate" in err_str.lower():
+                    logger.warning("Gemini rate limit on model=%s, trying next", model)
+                    continue
+                logger.error("Gemini API error (model=%s): %s", model, e)
+                break
+
+        logger.error("All Gemini models exhausted")
+        return {
+            "reply": FALLBACK_MESSAGES.get(language, FALLBACK_MESSAGES["ru"]),
+            "action": "none",
+            "student_data": None,
+        }
 
     def clear_session(self, session_id: str) -> None:
         self._sessions.pop(session_id, None)

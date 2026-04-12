@@ -114,10 +114,11 @@ async def get_available_slots(token: str, days_ahead: int = 14) -> list[dict]:
             except Exception as exc:
                 logger.error("calendar error %s-%s: %s", year, month, exc)
 
+        today = now.date()
         cutoff = (now + timedelta(days=days_ahead)).date()
         target_dates = sorted(
             d for d in available_dates
-            if datetime.fromisoformat(d).date() <= cutoff
+            if today <= datetime.fromisoformat(d).date() <= cutoff
         )
 
         for date_str in target_dates:

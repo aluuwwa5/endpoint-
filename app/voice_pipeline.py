@@ -60,6 +60,27 @@ class VoicePipeline:
 
         try:
             if action == "book":
+                from datetime import datetime, timezone, timedelta
+                # Validate appointment date is not in the past
+                appt_date_str = student_data.get("appointment_date", "")
+                slot_start = student_data.get("slot_start_time", "")
+                check_str = slot_start or appt_date_str
+                almaty_now = datetime.now(timezone(timedelta(hours=5)))
+                if check_str:
+                    try:
+                        # Try parsing ISO format from slot_start_time
+                        dt = datetime.fromisoformat(check_str.replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone(timedelta(hours=5)))
+                        if dt < almaty_now:
+                            return {
+                                "ru": "Нельзя записаться на прошедшую дату. Давай выберем ближайшее свободное время?",
+                                "kk": "Өткен күнге жазылу мүмкін емес. Жақын бос уақытты таңдайық?",
+                                "en": "Cannot book a past date. Shall we pick an upcoming slot?",
+                            }.get(language, "Cannot book a past date.")
+                    except (ValueError, TypeError):
+                        pass  # Can't parse — let the API decide
+
                 return await create_appointment(
                     student_data=student_data,
                     language=language,
@@ -68,10 +89,17 @@ class VoicePipeline:
 
             if action == "cancel" and token:
                 from app.booking_client import cancel_appointment
+                VALID_REASON_TOPICS = {
+                    "Schedule Conflict", "Personal Circumstances",
+                    "Found Another Specialist", "Health Issues", "Other"
+                }
+                reason_topic = student_data.get("reason_topic", "Other")
+                if reason_topic not in VALID_REASON_TOPICS:
+                    reason_topic = "Other"
                 return await cancel_appointment(
                     slot_id=student_data["slot_id"],
                     token=token,
-                    reason_topic=student_data.get("reason_topic", "Other"),
+                    reason_topic=reason_topic,
                     reason_message=student_data.get("reason_message", ""),
                 )
 
